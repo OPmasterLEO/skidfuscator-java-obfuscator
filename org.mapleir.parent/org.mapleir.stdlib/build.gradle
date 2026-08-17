@@ -5,9 +5,9 @@ plugins {
 dependencies {
     api project(':dot4j')
     api project(':property-framework')
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.0'
-    testImplementation 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:6.1.3'
+    testImplementation 'org.junit.jupiter:junit-jupiter-engine:6.1.3'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:6.1.3'
 }
 
 test {
