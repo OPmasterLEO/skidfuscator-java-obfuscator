@@ -8,7 +8,7 @@ dependencies {
     api project(':flowgraph')
     api project(':app-services')
     api 'org.apache.commons:commons-lang3:3.12.0'
-    testImplementation 'junit:junit:3.8.2'
+    testImplementation 'junit:junit:4.13.2'
     compileOnly 'org.projectlombok:lombok:1.18.46'
 
 
@@ -16,4 +16,8 @@ dependencies {
 
 group = 'dev.skidfuscator.mapleir'
 description = 'MapleIR-ir'
+
+test {
+    useJUnit()
+}
 

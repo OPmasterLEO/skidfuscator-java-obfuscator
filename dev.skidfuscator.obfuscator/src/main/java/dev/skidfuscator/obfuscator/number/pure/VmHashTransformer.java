@@ -3,6 +3,7 @@ package dev.skidfuscator.obfuscator.number.pure;
 import dev.skidfuscator.obfuscator.Skidfuscator;
 import dev.skidfuscator.obfuscator.number.hash.HashTransformer;
 import dev.skidfuscator.obfuscator.number.hash.SkiddedHash;
+import dev.skidfuscator.obfuscator.number.hash.impl.BitwiseHashTransformer;
 import dev.skidfuscator.obfuscator.predicate.factory.PredicateFlowGetter;
 import dev.skidfuscator.obfuscator.ssvm.JdkBootClassFinder;
 import dev.skidfuscator.obfuscator.ssvm.SystemProps$RawNatives;
@@ -48,15 +49,26 @@ import static dev.xdark.ssvm.classloading.SupplyingClassLoaderInstaller.supplyFr
 
 public class VmHashTransformer implements HashTransformer {
     private final Skidfuscator skidfuscator;
+    private final HashTransformer fallback;
     private VirtualMachine vm;
+    private boolean useVm;
 
     public VmHashTransformer(Skidfuscator skidfuscator) {
         this.skidfuscator = skidfuscator;
-        this.init();
-
-        // Post init
-        this.selectRandomMethod();
-
+        this.fallback = new BitwiseHashTransformer(skidfuscator);
+        try {
+            this.init();
+            pruneInvalidMethodMatches();
+            this.selectRandomMethod();
+            this.useVm = selectedMethod != null;
+            if (!useVm) {
+                System.err.println("VmHashTransformer: no VM hash methods available, using bitwise fallback");
+            }
+        } catch (Exception e) {
+            this.useVm = false;
+            this.selectedMethod = null;
+            System.err.println("VmHashTransformer: VM bootstrap failed, using bitwise fallback: " + e.getMessage());
+        }
     }
 
     private JavaMethod selectedMethod;
@@ -101,14 +113,30 @@ public class VmHashTransformer implements HashTransformer {
     }
 
     public void selectRandomMethod() {
+        pruneInvalidMethodMatches();
         if (methodMatches.isEmpty()) {
-            throw new IllegalStateException("No valid methods found for hash transformation");
+            selectedMethod = null;
+            useVm = false;
+            return;
         }
 
         List<JavaMethod> methods = new ArrayList<>(methodMatches.keySet());
+        methods.removeIf(Objects::isNull);
+        if (methods.isEmpty()) {
+            selectedMethod = null;
+            useVm = false;
+            return;
+        }
+
         this.selectedMethod = methods.get(random.nextInt(methods.size()));
 
         Set<ParameterMatch> matches = methodMatches.get(selectedMethod);
+        if (matches == null || matches.isEmpty()) {
+            methodMatches.remove(selectedMethod);
+            selectRandomMethod();
+            return;
+        }
+
         List<ParameterMatch> paramList = new ArrayList<>(matches);
         this.predicateParam = paramList.get(random.nextInt(paramList.size()));
 
@@ -123,8 +151,8 @@ public class VmHashTransformer implements HashTransformer {
 
     @Override
     public SkiddedHash hash(int starting, BasicBlock vertex, PredicateFlowGetter caller) {
-        if (selectedMethod == null) {
-            throw new IllegalStateException("No method selected for hashing");
+        if (!useVm || selectedMethod == null) {
+            return fallback.hash(starting, vertex, caller);
         }
 
         try {
@@ -165,8 +193,8 @@ public class VmHashTransformer implements HashTransformer {
 
     @Override
     public int hash(int starting) {
-        if (selectedMethod == null) {
-            throw new IllegalStateException("No method selected for hashing");
+        if (!useVm || selectedMethod == null) {
+            return fallback.hash(starting);
         }
 
         final Argument[] args = new Argument[randomArgs.length];
@@ -182,23 +210,26 @@ public class VmHashTransformer implements HashTransformer {
         try {
             return (int) invocationUtil.invokeInt(selectedMethod, args);
         } catch (VMException e) {
-            //invocationUtil.invokeVoid(printStackTrace, Argument.reference(e.getOop()));
             methodMatches.remove(selectedMethod);
             selectRandomMethod();
-            //System.out.println("Reflushing... found " + selectedMethod.getName() + selectedMethod.getDesc() + " instead");
+            if (!useVm || selectedMethod == null) {
+                return fallback.hash(starting);
+            }
             return hash(starting);
         } catch (Exception e) {
             methodMatches.remove(selectedMethod);
             selectRandomMethod();
-            //System.out.println("Reflushing... found " + selectedMethod.getName() + selectedMethod.getDesc() + " instead");
+            if (!useVm || selectedMethod == null) {
+                return fallback.hash(starting);
+            }
             return hash(starting);
         }
     }
 
     @Override
     public Expr hash(BasicBlock vertex, PredicateFlowGetter caller) {
-        if (selectedMethod == null) {
-            throw new IllegalStateException("No method selected for hashing");
+        if (!useVm || selectedMethod == null) {
+            return fallback.hash(vertex, caller);
         }
 
         Type[] types = Type.getArgumentTypes(selectedMethod.getDesc());
@@ -276,6 +307,12 @@ public class VmHashTransformer implements HashTransformer {
 
         // [fix] fuck JDK9+ raw natives on Liberica
         SystemProps$RawNatives.init(vm);
+
+        // SSVM cannot link JVM native methods invoked during core class init.
+        InstanceClass javaLangClass = (InstanceClass) vm.findBootstrapClass("java/lang/Class");
+        if (javaLangClass != null) {
+            vmi.setInvoker(javaLangClass, "registerNatives", "()V", MethodInvoker.noop());
+        }
 
         // [fix] jdk8+ memory fuckery
         if (vm.getJvmVersion() > 8) {
@@ -406,7 +443,14 @@ public class VmHashTransformer implements HashTransformer {
         // Phase 3:
         potentialCandidates.forEach((method, matches) -> {
             final InstanceClass klass = classes.get(method.getOwnerClass());
+            if (klass == null) {
+                return;
+            }
+
             final JavaMethod javaMethod = klass.getMethod(method.getName(), method.getDesc());
+            if (javaMethod == null) {
+                return;
+            }
 
             methodMatches.put(javaMethod, matches);
         });
@@ -418,6 +462,10 @@ public class VmHashTransformer implements HashTransformer {
     }
 
     private final Map<JavaMethod, Set<ParameterMatch>> methodMatches = new HashMap<>();
+
+    private void pruneInvalidMethodMatches() {
+        methodMatches.entrySet().removeIf(entry -> entry.getKey() == null);
+    }
 
     private boolean isCandidate(final org.mapleir.asm.MethodNode method) {
         if (!method.isStatic() || method.isClinit() || method.isInit() || method.isAbstract() || method.isNative() || !method.isPublic())

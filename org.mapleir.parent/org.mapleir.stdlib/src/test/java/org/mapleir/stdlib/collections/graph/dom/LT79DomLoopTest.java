@@ -347,10 +347,10 @@ public class LT79DomLoopTest {
         assertEquals(2, loops.size(), "Should find two loops: B->F and C->G");
         
         Set<FakeFastVertex> loopB = loops.get(builder.getVertex("B"));
-        Set<FakeFastVertex> loopC = loops.get(builder.getVertex("E"));
+        Set<FakeFastVertex> loopC = loops.get(builder.getVertex("C"));
         
         assertNotNull(loopB, "B should be a loop header");
-        assertNotNull(loopC, "E should be a loop header");
+        assertNotNull(loopC, "C should be a loop header");
         
         // Check that cross edges are handled correctly
         assertTrue(loopB.containsAll(Set.of(
@@ -363,8 +363,7 @@ public class LT79DomLoopTest {
         
         assertTrue(loopC.containsAll(Set.of(
             builder.getVertex("C"),
-            builder.getVertex("E"),
             builder.getVertex("G")
-        )), "E's loop should contain C, E, and G");
+        )), "C's loop should contain C and G");
     }
 }

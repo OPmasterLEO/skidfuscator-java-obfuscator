@@ -4,6 +4,10 @@
  * This project uses @Incubating APIs which are subject to change.
  */
 
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 rootProject.name = 'skidfuscator-master'
 
 void initMaple() {

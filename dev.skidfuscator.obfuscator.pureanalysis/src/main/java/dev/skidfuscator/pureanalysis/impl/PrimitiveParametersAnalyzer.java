@@ -35,7 +35,7 @@ public class PrimitiveParametersAnalyzer extends Analyzer {
         Type[] argumentTypes = Type.getArgumentTypes(methodNode.desc);
 
         for (Type type : argumentTypes) {
-            if (!isPrimitiveType(type)) {
+            if (!isPrimitiveType(type) && !context.isPure(type.getInternalName())) {
                 return impure(String.format(
                         "Argument %s is not a primitive type and not a pure class", type.getDescriptor()
                 ));

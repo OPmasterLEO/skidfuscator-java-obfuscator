@@ -1,6 +1,13 @@
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.TaskAction
+
+import java.util.function.Supplier
+
 plugins {
     id 'java'
-    id 'com.roscopeco.jasm' version "0.7.0"
     id 'xyz.wagyourtail.jvmdowngrader' version '1.2.1'
 }
 
@@ -9,11 +16,18 @@ repositories {
     maven { url 'https://jitpack.io' }
 }
 
+// The archived com.roscopeco.jasm plugin is incompatible with Gradle 9, so we
+// drive the jasm assembler library directly with our own incremental task.
+def jasmVersion = '0.7.0'
+
 configurations {
+    jasmTool
     testCompile.extendsFrom compileOnly
 }
 
 dependencies {
+    jasmTool "com.roscopeco.jasm:jasm:${jasmVersion}"
+
     testCompileOnly 'org.projectlombok:lombok:1.18.46'
     compileOnly 'org.projectlombok:lombok:1.18.46'
 
@@ -36,10 +50,100 @@ dependencies {
     testImplementation files("$buildDir/classes/jasm/test")
     testImplementation 'org.mockito:mockito-core:4.2.0'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:6.1.3'
-    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.9.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:6.1.3'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:6.1.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+abstract class AssembleJasm extends DefaultTask {
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    final FileCollection source = project.objects.fileCollection()
+
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract DirectoryProperty getSourceRoot()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
+
+    @TaskAction
+    void assemble() {
+        def outputDir = outputDirectory.get().asFile
+        def sourceRoot = sourceRoot.get().asFile.toPath()
+        outputDir.mkdirs()
+
+        def urls = project.configurations.jasmTool.files.collect { it.toURI().toURL() }
+        def urlClassLoader = new URLClassLoader(urls as URL[], getClass().classLoader)
+
+        try {
+            def assemblerClass = urlClassLoader.loadClass('com.roscopeco.jasm.JasmAssembler')
+
+            source.files.each { File src ->
+                def relative = sourceRoot
+                    .relativize(src.toPath())
+                    .toString()
+                    .replaceAll(/\.jasm$/, '.class')
+
+                def code = assemblerClass.getConstructor(
+                    String.class, Supplier.class
+                ).newInstance(
+                    src.name,
+                    { new FileInputStream(src) } as Supplier
+                ).assemble()
+
+                def classFile = new File(outputDir, relative)
+                classFile.parentFile.mkdirs()
+                classFile.bytes = code
+            }
+        } finally {
+            urlClassLoader.close()
+        }
+    }
+}
+
+def assembleTestJasm = tasks.register('assembleTestJasm', AssembleJasm) {
+    group = 'build'
+    description = 'Assembles the test Jasm sources'
+    sourceRoot.set(project.file('src/test/jasm'))
+    outputDirectory.set(layout.buildDirectory.dir('classes/jasm/test'))
+    source.from(project.fileTree(dir: 'src/test/jasm', include: '**/*.jasm'))
+}
+
+tasks.named('compileTestJava') {
+    dependsOn assembleTestJasm
+}
+
+def sampleTestJar = layout.projectDirectory.file('src/test/resources/test.jar')
+
+tasks.register('ensureSampleTestJar') {
+    group = 'verification'
+    description = 'Restores the sample test jar from git history when missing'
+    outputs.file(sampleTestJar)
+
+    doLast {
+        def jarFile = sampleTestJar.asFile
+        if (jarFile.exists()) {
+            return
+        }
+
+        jarFile.parentFile.mkdirs()
+        def process = ['git', 'show', '4e5a488:obfuscator/src/test/resources/test.jar'].execute(null, rootProject.projectDir)
+        jarFile.bytes = process.inputStream.bytes
+        if (process.waitFor() != 0) {
+            throw new GradleException('Failed to restore sample test.jar from git history')
+        }
+    }
+}
+
+tasks.named('processTestResources') {
+    dependsOn 'ensureSampleTestJar'
+}
+
+tasks.named('test') {
+    dependsOn assembleTestJasm
+    dependsOn 'ensureSampleTestJar'
+}
 
 jar {
     into('resources') {
@@ -50,7 +154,6 @@ jar {
     }
 }
 
-// Add SDK jar to test resources
 processTestResources {
     from(project(':sdk').tasks.jar.archiveFile) {
         into 'resources'

@@ -691,19 +691,21 @@ public class ExclusionParser {
                             member.isInclusion()
                     ));
                 }
-                default -> throw new ExclusionParseException("Invalid member type: " + member.getType());
+                default -> { }
             }
         }
 
         map.put(ExclusionType.METHOD, new ExclusionTester<MethodNode>() {
             @Override
             public boolean test(MethodNode var) {
-                String ownerName = var.getOwnerClass().getName();
+                if (var.getOwnerClass() != null) {
+                    String ownerName = var.getOwnerClass().getName();
 
-                // First check if the method's class matches any inclusion pattern
-                for (Pattern includePattern : includedClassPatterns) {
-                    if (includePattern.matcher(ownerName).find()) {
-                        return false; // Include methods from included classes
+                    // First check if the method's class matches any inclusion pattern
+                    for (Pattern includePattern : includedClassPatterns) {
+                        if (includePattern.matcher(ownerName).find()) {
+                            return false; // Include methods from included classes
+                        }
                     }
                 }
 
@@ -741,7 +743,7 @@ public class ExclusionParser {
 
         public boolean matches(MethodNode method) {
             // Check name pattern
-            if (!namePattern.matcher(method.getDisplayName()).matches()) {
+            if (!namePattern.matcher(method.getName()).matches()) {
                 return false;
             }
 

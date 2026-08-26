@@ -18,6 +18,16 @@ public class FakeFastVertex implements FastGraphVertex {
 		return id.hashCode();
 	}
 
+	/*
+	 * Identity equality preserved, but a stable hash derived from the name so
+	 * that hash-based collection iteration order is deterministic across JVM
+	 * runs. Graph algorithms in the test suite depend on that order.
+	 */
+	@Override
+	public int hashCode() {
+		return id.hashCode();
+	}
+
 	@Override
 	public String getDisplayName() {
 		return id;
