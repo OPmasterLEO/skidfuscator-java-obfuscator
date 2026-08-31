@@ -3,6 +3,7 @@ package dev.skidfuscator.jghost;
 import com.google.common.hash.Hashing;
 import com.google.common.io.ByteSource;
 import com.google.common.io.Files;
+import com.google.gson.JsonSyntaxException;
 import dev.skidfuscator.jghost.tree.GhostClassNode;
 import dev.skidfuscator.jghost.tree.GhostContents;
 import dev.skidfuscator.jghost.tree.GhostLibrary;
@@ -20,6 +21,8 @@ import org.topdank.byteio.in.SingleJmodDownloader;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardCopyOption;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 @UtilityClass
@@ -68,12 +71,17 @@ public class GhostHelper {
         if (!output.exists()) {
             logger.post("[?] Could not find mappings for " + lib.getAbsolutePath() + "... Creating...");
             output.getParentFile().mkdirs();
-            output.getParentFile().mkdir();
             library = GhostHelper.createFromLibraryFile(logger, lib);
             GhostHelper.saveLibraryFile(logger, library, output);
             logger.post("[✓] Creating mappings for " + lib.getAbsolutePath() + "!");
         } else {
             library = GhostHelper.readFromLibraryFile(logger, output);
+            if (library == null || !GhostHelper.matchesLibraryHash(logger, lib, library)) {
+                logger.post("[?] Mappings cache for " + lib.getAbsolutePath() + " is corrupt or outdated, recreating...");
+                library = GhostHelper.createFromLibraryFile(logger, lib);
+                GhostHelper.saveLibraryFile(logger, library, output);
+                logger.post("[✓] Recreated mappings for " + lib.getAbsolutePath() + "!");
+            }
         }
 
         return library;
@@ -96,6 +104,11 @@ public class GhostHelper {
     }
 
     public ApplicationClassSource importFile(final Logger logger, final boolean fuckit, final GhostLibrary library) {
+        if (library == null || library.getContents() == null || library.getContents().getClasses() == null) {
+            logger.error("Failed to import library: cache file is missing or corrupt");
+            return new ApplicationClassSource("empty", fuckit, Collections.emptyList());
+        }
+
         /* Create a new library class source with superior to default priority */
         final ApplicationClassSource libraryClassSource = new ApplicationClassSource(
                 library.getName(),
@@ -112,16 +125,28 @@ public class GhostHelper {
     }
 
     public GhostLibrary readFromLibraryFile(final Logger logger, final File file) {
-        try {
-            final FileReader fileReader = new FileReader(file);
-            final GhostLibrary library = Ghost
-                    .gson()
-                    .fromJson(fileReader, GhostLibrary.class);
-            fileReader.close();
-            return library;
+        try (final Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
+            return Ghost.gson().fromJson(reader, GhostLibrary.class);
         } catch (IOException e) {
-            logger.error("Failed to download library cache", e);
+            logger.error("Failed to read library cache: " + file.getAbsolutePath(), e);
             return null;
+        } catch (JsonSyntaxException e) {
+            logger.error("Corrupt library cache: " + file.getAbsolutePath(), e);
+            return null;
+        }
+    }
+
+    private boolean matchesLibraryHash(final Logger logger, final File lib, final GhostLibrary library) {
+        if (library.getSha256() == null) {
+            return false;
+        }
+
+        try {
+            final String sha256 = Files.asByteSource(lib).hash(Hashing.sha256()).toString();
+            return sha256.equals(library.getSha256());
+        } catch (IOException e) {
+            logger.error("Failed to verify library hash for " + lib.getAbsolutePath(), e);
+            return false;
         }
     }
 
@@ -162,14 +187,21 @@ public class GhostHelper {
     }
 
     public void saveLibraryFile(final Logger logger, final GhostLibrary library, final File file) {
-        try {
-            final FileWriter fileWriter = new FileWriter(file);
-            final BufferedWriter writer = new BufferedWriter(fileWriter);
-            writer.write(Ghost.gson().toJson(library, GhostLibrary.class));
-            writer.close();
-        } catch (IOException e) {
-            logger.error("Failed to download library cache", e);
+        if (library == null) {
             return;
+        }
+
+        final File temp = new File(file.getAbsolutePath() + ".tmp");
+        try {
+            file.getParentFile().mkdirs();
+            try (final Writer writer = new BufferedWriter(
+                    new OutputStreamWriter(new FileOutputStream(temp), StandardCharsets.UTF_8))) {
+                writer.write(Ghost.gson().toJson(library, GhostLibrary.class));
+            }
+            java.nio.file.Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            logger.error("Failed to save library cache: " + file.getAbsolutePath(), e);
+            temp.delete();
         }
     }
 
