@@ -66,22 +66,21 @@ public class GhostHelper {
 
         final File output = new File(outputPath.toString());
 
-        final GhostLibrary library;
-
         if (!output.exists()) {
             logger.post("[?] Could not find mappings for " + lib.getAbsolutePath() + "... Creating...");
             output.getParentFile().mkdirs();
-            library = GhostHelper.createFromLibraryFile(logger, lib);
+            final GhostLibrary library = GhostHelper.createFromLibraryFile(logger, lib);
             GhostHelper.saveLibraryFile(logger, library, output);
             logger.post("[✓] Creating mappings for " + lib.getAbsolutePath() + "!");
-        } else {
-            library = GhostHelper.readFromLibraryFile(logger, output);
-            if (library == null || !GhostHelper.matchesLibraryHash(logger, lib, library)) {
-                logger.post("[?] Mappings cache for " + lib.getAbsolutePath() + " is corrupt or outdated, recreating...");
-                library = GhostHelper.createFromLibraryFile(logger, lib);
-                GhostHelper.saveLibraryFile(logger, library, output);
-                logger.post("[✓] Recreated mappings for " + lib.getAbsolutePath() + "!");
-            }
+            return library;
+        }
+
+        GhostLibrary library = GhostHelper.readFromLibraryFile(logger, output);
+        if (library == null || !GhostHelper.matchesLibraryHash(logger, lib, library)) {
+            logger.post("[?] Mappings cache for " + lib.getAbsolutePath() + " is corrupt or outdated, recreating...");
+            library = GhostHelper.createFromLibraryFile(logger, lib);
+            GhostHelper.saveLibraryFile(logger, library, output);
+            logger.post("[✓] Recreated mappings for " + lib.getAbsolutePath() + "!");
         }
 
         return library;
@@ -105,7 +104,7 @@ public class GhostHelper {
 
     public ApplicationClassSource importFile(final Logger logger, final boolean fuckit, final GhostLibrary library) {
         if (library == null || library.getContents() == null || library.getContents().getClasses() == null) {
-            logger.error("Failed to import library: cache file is missing or corrupt");
+            logger.error("Failed to import library: cache file is missing or corrupt", new IOException("Invalid library cache"));
             return new ApplicationClassSource("empty", fuckit, Collections.emptyList());
         }
 
