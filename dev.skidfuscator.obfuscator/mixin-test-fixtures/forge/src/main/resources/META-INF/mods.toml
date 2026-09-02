@@ -1,0 +1,11 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="skid_mixin_forge_fixture"
+version="1.0.0"
+displayName="Skid Mixin Forge Fixture"
+
+[[mods.mixin]]
+config="skid.mixin.forge.mixins.json"
