@@ -110,3 +110,29 @@ fieldRenamer {
   enabled: false
   type: ALPHABETICAL
 }
+
+mixinRemapper {
+  classRemapping {
+    enabled: true
+    exempt: []
+  }
+  fieldRemapping {
+    enabled: false
+    exempt: []
+  }
+  methodRemapping {
+    enabled: false
+    exempt: []
+  }
+  configJson {
+    enabled: false
+    format: AUTO
+    paths: []
+    exempt: []
+  }
+  configPlugin {
+    enabled: false
+    remapPlugins: false
+    exempt: []
+  }
+}
