@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "skid-mixin-fabric-fixture",
+  "version": "1.0.0",
+  "name": "Skid Mixin Fabric Fixture",
+  "mixins": [
+    "skid.mixin.fabric.mixins.json"
+  ]
+}

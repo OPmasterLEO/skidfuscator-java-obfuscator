@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "com.example.fabric.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "ExampleFieldShadowMixin",
+    "ExampleOverwriteMixin"
+  ],
+  "client": [],
+  "server": [],
+  "plugin": "com.example.fabric.mixin.ExampleMixinPlugin"
+}

@@ -110,3 +110,10 @@ dev.skidfuscator.obfuscator/out/test/resources/test.jar.compressed.json
 dev.skidfuscator.obfuscator/out/test/resources/test.jar.compressed
 /dev.skidfuscator.gradle-plugin
 /dev.skidfuscator.obfuscator/src/test
+
+# Mixin test fixtures (override global *.json and target/ ignores)
+!dev.skidfuscator.obfuscator/mixin-test-fixtures/
+!dev.skidfuscator.obfuscator/mixin-test-fixtures/**
+!dev.skidfuscator.obfuscator/mixin-test-fixtures/**/*.json
+!dev.skidfuscator.obfuscator/mixin-test-fixtures/**/target/
+!dev.skidfuscator.obfuscator/mixin-test-fixtures/**/target/**
